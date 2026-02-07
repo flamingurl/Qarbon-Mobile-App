@@ -18,7 +18,7 @@ class DatabaseHandler:
 
     def _create_tables(self):
         with self._get_connection() as conn:
-            # dates_json stores the array of specific working days
+            # dates_json stores: {"2026-02-07": 1, "2026-02-08": 2} where 1=AM, 2=PM
             conn.execute('''CREATE TABLE IF NOT EXISTS workers 
                             (name TEXT PRIMARY KEY, job_title TEXT, dates_json TEXT)''')
             conn.execute('''CREATE TABLE IF NOT EXISTS tasks 
@@ -32,7 +32,7 @@ class DatabaseHandler:
             workers = []
             for r in rows:
                 w = dict(r)
-                w['dates'] = json.loads(w['dates_json']) if w['dates_json'] else []
+                w['shifts'] = json.loads(w['dates_json']) if w['dates_json'] else {}
                 workers.append(w)
             return workers
 
@@ -41,15 +41,10 @@ class DatabaseHandler:
             conn.row_factory = sqlite3.Row
             return [dict(row_number=r['id'], **r) for r in conn.execute("SELECT * FROM tasks").fetchall()]
 
-    def add_worker(self, name, job_title, dates_array):
+    def add_worker(self, name, job_title, shifts_dict):
         with self._get_connection() as conn:
             conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?)", 
-                         (name, job_title, json.dumps(dates_array)))
-
-    def update_worker_dates(self, name, dates_array):
-        with self._get_connection() as conn:
-            conn.execute("UPDATE workers SET dates_json = ? WHERE name = ?", 
-                         (json.dumps(dates_array), name))
+                         (name, job_title, json.dumps(shifts_dict)))
 
     def add_task(self, urgency, description):
         with self._get_connection() as conn:

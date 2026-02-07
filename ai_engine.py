@@ -1,26 +1,28 @@
 from openai import OpenAI
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class AIEngine:
     def __init__(self, api_key):
         self.client = OpenAI(api_key=api_key, http_client=None)
 
     def get_best_worker_for_task(self, task, workers):
-        today = datetime.now().strftime('%Y-%m-%d')
+        # Determine if current time is Morning or Evening shift
+        now = datetime.utcnow() - timedelta(hours=5)
+        current_date = now.strftime('%Y-%m-%d')
+        current_shift = 1 if now.hour < 15 else 2 # Morning before 3PM, Else Evening
         
         prompt = f"""
-        Identify the best qualified worker for: "{task['description']}"
-        CURRENT DATE: {today}
+        Assign best worker for: {task['description']}
+        DATE: {current_date} | SHIFT REQ: {'Morning' if current_shift == 1 else 'Evening'}
         
-        WORKERS LIST (including their specific working dates):
-        {json.dumps(workers)}
+        WORKERS: {json.dumps(workers)}
         
-        RULES:
-        1. A worker is ONLY available if CURRENT DATE is in their 'dates' list.
-        2. Job title must match the task nature.
+        LOGIC:
+        1. Match Job Title to Task.
+        2. Worker must have the current date in 'shifts' and the value must match shift req (1=AM, 2=PM).
         
-        Return JSON ONLY: {{"worker_name": "Name" or null}}
+        Return JSON: {{"worker_name": "Name" or null}}
         """
         try:
             response = self.client.chat.completions.create(
