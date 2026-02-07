@@ -7,21 +7,19 @@ class AIEngine:
         self.client = OpenAI(api_key=api_key, http_client=None)
 
     def get_best_worker_for_task(self, task, workers):
-        # Determine if current time is Morning or Evening shift
         now = datetime.utcnow() - timedelta(hours=5)
         current_date = now.strftime('%Y-%m-%d')
-        current_shift = 1 if now.hour < 15 else 2 # Morning before 3PM, Else Evening
+        # Shift logic: 1=Morning, 2=Evening
+        current_shift = 1 if now.hour < 15 else 2 
         
         prompt = f"""
         Assign best worker for: {task['description']}
-        DATE: {current_date} | SHIFT REQ: {'Morning' if current_shift == 1 else 'Evening'}
-        
+        CURRENT DATE: {current_date} | CURRENT SHIFT: {'Morning' if current_shift == 1 else 'Evening'}
         WORKERS: {json.dumps(workers)}
         
-        LOGIC:
-        1. Match Job Title to Task.
-        2. Worker must have the current date in 'shifts' and the value must match shift req (1=AM, 2=PM).
-        
+        RULES:
+        1. Worker MUST have the current date in their 'shifts' and the shift type must match.
+        2. Job Title must fit Task nature.
         Return JSON: {{"worker_name": "Name" or null}}
         """
         try:
