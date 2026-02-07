@@ -6,7 +6,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-app = Flask(__name__, static_folder='static')
+# We set static_folder to '.' because your files are in the root directory
+app = Flask(__name__, static_url_path='', static_folder='.')
 CORS(app)
 
 db = DatabaseHandler()
@@ -14,13 +15,20 @@ ai_engine = AIEngine(os.getenv("OPENAI_API_KEY"))
 
 @app.route('/')
 def route_index(): 
-    return send_from_directory(app.static_folder, 'manager.html')
+    # Serves manager.html as the primary page
+    return send_from_directory('.', 'manager.html')
+
+@app.route('/manager')
+def route_manager(): 
+    return send_from_directory('.', 'manager.html')
 
 @app.route('/api/tasks', methods=['GET'])
-def get_tasks(): return jsonify(db.read_tasks())
+def get_tasks(): 
+    return jsonify(db.read_tasks())
 
 @app.route('/api/workers', methods=['GET'])
-def get_workers(): return jsonify(db.read_workers())
+def get_workers(): 
+    return jsonify(db.read_workers())
 
 @app.route('/api/add-worker', methods=['POST'])
 def add_worker():
@@ -40,7 +48,6 @@ def assign_task_to_best():
     tasks = db.read_tasks()
     workers = db.read_workers()
     target_task = next((t for t in tasks if t['row_number'] == task_id), None)
-    
     result = ai_engine.get_best_worker_for_task(target_task, workers)
     if result and result.get('worker_name'):
         db.assign_task_to_worker(task_id, result['worker_name'])
@@ -53,8 +60,6 @@ def assign_worker_to_best():
     workers = db.read_workers()
     tasks = db.read_tasks()
     target_worker = next((w for w in workers if w['name'] == worker_name), None)
-    
-    # AI finds the best unassigned task for this specific person
     result = ai_engine.get_best_task_for_worker(target_worker, tasks)
     if result and result.get('task_id'):
         db.assign_task_to_worker(result['task_id'], worker_name)
@@ -86,4 +91,5 @@ def delete_worker(name):
     return jsonify({'success': True})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)

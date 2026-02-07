@@ -15,7 +15,7 @@ class AIEngine:
         prompt = f"""Match the best worker for: {task['description']}
         Date: {date} | Shift: {'AM' if shift==1 else 'PM'}
         Workers: {json.dumps(workers)}
-        Rules: Match by Job Title and Shift. Return JSON {{"worker_name": "Name" or null}}"""
+        Rules: Match Job Title and Shift. Return JSON {{"worker_name": "Name" or null}}"""
         return self._call_ai(prompt)
 
     def get_best_task_for_worker(self, worker, tasks):
@@ -29,8 +29,9 @@ class AIEngine:
 
     def assign_tasks_one_per_person(self, workers, tasks):
         date, shift = self._get_current_context()
+        unassigned = [t for t in tasks if not t['assigned_to'] and not t['date_completed']]
         prompt = f"""Bulk assign workers to tasks for {date} (Shift {shift}).
-        Workers: {json.dumps(workers)} | Tasks: {json.dumps(tasks)}
+        Workers: {json.dumps(workers)} | Tasks: {json.dumps(unassigned)}
         Return JSON: {{"WorkerName": [TaskID]}}"""
         return self._call_ai(prompt)
 
