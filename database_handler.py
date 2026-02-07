@@ -28,7 +28,6 @@ class DatabaseHandler:
             workers = []
             for r in rows:
                 w = dict(r)
-                # Parse the JSON string back into a dictionary for the frontend
                 w['shifts'] = json.loads(w['dates_json']) if w['dates_json'] else {}
                 workers.append(w)
             return workers
@@ -40,7 +39,6 @@ class DatabaseHandler:
 
     def add_worker(self, name, job_title, shifts_dict):
         with self._get_connection() as conn:
-            # Save the dictionary as a JSON string
             conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?)", 
                          (name, job_title, json.dumps(shifts_dict)))
 

@@ -6,7 +6,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-app = Flask(__name__, static_folder='static')
+# We set static_folder to '' because your files are in the root directory
+app = Flask(__name__, static_folder='')
 CORS(app)
 
 db = DatabaseHandler()
@@ -14,11 +15,11 @@ ai_engine = AIEngine(os.getenv("OPENAI_API_KEY"))
 
 @app.route('/')
 def route_index(): 
-    return send_from_directory(app.static_folder, 'index.html')
+    return send_from_directory('', 'index.html')
 
 @app.route('/manager')
 def route_manager(): 
-    return send_from_directory(app.static_folder, 'manager.html')
+    return send_from_directory('', 'manager.html')
 
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks(): 
@@ -31,8 +32,13 @@ def get_workers():
 @app.route('/api/add-worker', methods=['POST'])
 def add_worker():
     d = request.json
-    # Logic Fix: Passing the shift dictionary to the handler
     db.add_worker(d['name'], d['job_title'], d['worker_schedule'])
+    return jsonify({'success': True})
+
+@app.route('/api/add-task', methods=['POST'])
+def add_task():
+    d = request.json
+    db.add_task(d['urgency'], d['description'])
     return jsonify({'success': True})
 
 @app.route('/api/assign-task-to-best', methods=['POST'])
@@ -41,7 +47,6 @@ def assign_to_best():
     tasks = db.read_tasks()
     workers = db.read_workers()
     target_task = next((t for t in tasks if t['row_number'] == task_id), None)
-    
     result = ai_engine.get_best_worker_for_task(target_task, workers)
     if result and result.get('worker_name'):
         db.assign_task_to_worker(task_id, result['worker_name'])
@@ -61,15 +66,6 @@ def delete_task(row):
 @app.route('/api/delete-worker/<name>', methods=['DELETE'])
 def delete_worker(name):
     db.delete_worker(name)
-    return jsonify({'success': True})
-
-@app.route('/api/assign-tasks', methods=['POST'])
-def assign_bulk():
-    workers = db.read_workers()
-    tasks = db.read_tasks()
-    assignments = ai_engine.assign_tasks_one_per_person(workers, tasks)
-    for name, rows in assignments.items():
-        if rows: db.assign_task_to_worker(rows[0], name)
     return jsonify({'success': True})
 
 if __name__ == '__main__':
