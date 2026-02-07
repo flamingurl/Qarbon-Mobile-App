@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Qarbon Aerospace | Task Management</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <h1>Qarbon Aerospace Task Management</h1>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="manager-section">
+            <h2>System Controls</h2>
+            <p>Distribute high-priority tasks to available personnel based on role qualifications.</p>
+            <button id="assignBtn" class="btn-primary">Execute AI Optimized Shift Assignment</button>
+        </div>
+
+        <div class="form-row">
+            <div class="manager-section">
+                <h2>Personnel Registration</h2>
+                <form id="workerForm">
+                    <input type="text" id="workerName" placeholder="Full Name" required>
+                    <input type="text" id="workerRole" placeholder="Job Title (e.g. Lead Machinist)" required>
+                    <input type="text" id="workerSchedule" placeholder="Shift (e.g. 0800-1600)" required>
+                    <button type="submit" class="btn-success">Register Personnel</button>
+                </form>
+            </div>
+
+            <div class="manager-section">
+                <h2>Task Intake</h2>
+                <form id="taskForm">
+                    <input type="text" id="desc" placeholder="Task Description" required>
+                    <input type="number" id="urg" placeholder="Urgency (1-5)" min="1" max="5" required>
+                    <button type="submit" class="btn-primary">Log New Task</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="manager-section">
+            <h2>Live Operational Tasks</h2>
+            <div id="activeTasks" class="tasks-grid"></div>
+        </div>
+
+        <div class="manager-section">
+            <h2>Active Personnel Directory</h2>
+            <div id="workersOverview"></div>
+        </div>
+
+        <div class="manager-section">
+            <h2>Completed Task Archive (EST)</h2>
+            <div id="completedTasks"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin + '/api';
+
+        async function loadData() {
+            try {
+                const [tRes, wRes] = await Promise.all([
+                    fetch(`${API_URL}/tasks`),
+                    fetch(`${API_URL}/workers`)
+                ]);
+                const tasks = await tRes.json();
+                const workers = await wRes.json();
+                
+                const activeTasks = tasks.filter(t => !t.date_completed);
+                
+                // Track current assignments for badge status
+                const currentlyAssigned = new Set(activeTasks.map(t => t.assigned_to).filter(n => n));
+
+                // 1. Render Active Tasks
+                document.getElementById('activeTasks').innerHTML = activeTasks.map(t => `
+                    <div class="task-card">
+                        <button class="del-small" onclick="deleteItem('task', ${t.row_number})">Delete</button>
+                        <span class="urgency-tag" style="color:${getUrgencyColor(t.urgency)}">Priority ${t.urgency}</span>
+                        <h3>${t.description}</h3>
+                        <p>Assignee: <b>${t.assigned_to || 'Pending'}</b></p>
+                        <button class="btn-complete" onclick="markComplete(${t.row_number})">Complete Task</button>
+                    </div>`).join('');
+
+                // 2. Render Worker Table with Status and Loading Logic
+                document.getElementById('workersOverview').innerHTML = `
+                    <table class="worker-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>${workers.map(w => {
+                            const assigned = currentlyAssigned.has(w.name);
+                            return `
+                            <tr>
+                                <td><b>${w.name}</b></td>
+                                <td>${w.job_title}</td>
+                                <td>
+                                    <span class="status-badge ${assigned ? 'badge-assigned' : 'badge-unassigned'}">
+                                        ${assigned ? 'ASSIGNED' : 'UNASSIGNED'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button onclick="assignSelf('${w.name}', this)" class="btn-action">Assign</button>
+                                    <button onclick="deleteItem('worker', '${w.name}')" class="btn-del">Remove</button>
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                        </tbody>
+                    </table>`;
+
+                // 3. Render Archive
+                document.getElementById('completedTasks').innerHTML = tasks.filter(t => t.date_completed).map(t => `
+                    <div class="archive-item">
+                        <span><b>DONE:</b> ${t.description} (${t.assigned_to})</span>
+                        <small>${t.date_completed} EST</small>
+                    </div>`).join('');
+                    
+            } catch (err) { console.error("Sync Error:", err); }
+        }
+
+        async function deleteItem(type, id) {
+            if(!confirm(`Permanent Delete: Are you sure you want to remove this ${type}?`)) return;
+            await fetch(`${API_URL}/delete-${type}/${id}`, { method: 'DELETE' });
+            loadData();
+        }
+
+        // Individual Assignment with Loading State & AI Validation
+        async function assignSelf(name, btn) {
+            const originalText = btn.innerText;
+            btn.innerText = "...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_URL}/assign-self`, { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({worker_name: name}) 
+                });
+                const result = await res.json();
+                
+                if (!result.success) {
+                    alert(result.message || "No qualified tasks available for this role.");
+                }
+            } catch (e) {
+                alert("Assignment engine unavailable.");
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+                loadData();
+            }
+        }
+
+        async function markComplete(row) {
+            await fetch(`${API_URL}/complete-task`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({row_number: row}) 
+            });
+            loadData();
+        }
+
+        document.getElementById('taskForm').onsubmit = async (e) => {
+            e.preventDefault();
+            await fetch(`${API_URL}/add-task`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({
+                    description: document.getElementById('desc').value, 
+                    urgency: document.getElementById('urg').value
+                }) 
+            });
+            e.target.reset();
+            loadData();
+        };
+
+        document.getElementById('workerForm').onsubmit = async (e) => {
+            e.preventDefault();
+            await fetch(`${API_URL}/add-worker`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({
+                    name: document.getElementById('workerName').value,
+                    job_title: document.getElementById('workerRole').value,
+                    date_working: document.getElementById('workerSchedule').value
+                }) 
+            });
+            e.target.reset();
+            loadData();
+        };
+
+        document.getElementById('assignBtn').onclick = async () => {
+            const btn = document.getElementById('assignBtn');
+            btn.innerText = "AI OPTIMIZING SHIFT...";
+            btn.disabled = true;
+            
+            await fetch(`${API_URL}/assign-tasks`, { method: 'POST' });
+            
+            btn.innerText = "Execute AI Optimized Shift Assignment";
+            btn.disabled = false;
+            loadData();
+        };
+
+        function getUrgencyColor(u) {
+            return ['#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444'][u-1];
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
