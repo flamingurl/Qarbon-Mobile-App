@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime, timedelta
 import os
+import json
 
 class DatabaseHandler:
     def __init__(self, db_path='data/qarbon_app.db'):
@@ -17,9 +18,9 @@ class DatabaseHandler:
 
     def _create_tables(self):
         with self._get_connection() as conn:
-            # Added start_date and end_date for calendar tracking
+            # dates_json stores the array of specific working days
             conn.execute('''CREATE TABLE IF NOT EXISTS workers 
-                            (name TEXT PRIMARY KEY, job_title TEXT, start_date TEXT, end_date TEXT)''')
+                            (name TEXT PRIMARY KEY, job_title TEXT, dates_json TEXT)''')
             conn.execute('''CREATE TABLE IF NOT EXISTS tasks 
                             (id INTEGER PRIMARY KEY AUTOINCREMENT, urgency INTEGER, description TEXT, 
                              date_assigned TEXT, date_completed TEXT, assigned_to TEXT)''')
@@ -27,17 +28,28 @@ class DatabaseHandler:
     def read_workers(self):
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
-            return [dict(r) for r in conn.execute("SELECT * FROM workers").fetchall()]
+            rows = conn.execute("SELECT * FROM workers").fetchall()
+            workers = []
+            for r in rows:
+                w = dict(r)
+                w['dates'] = json.loads(w['dates_json']) if w['dates_json'] else []
+                workers.append(w)
+            return workers
 
     def read_tasks(self):
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             return [dict(row_number=r['id'], **r) for r in conn.execute("SELECT * FROM tasks").fetchall()]
 
-    def add_worker(self, name, job_title, start_date, end_date):
+    def add_worker(self, name, job_title, dates_array):
         with self._get_connection() as conn:
-            conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?, ?)", 
-                         (name, job_title, start_date, end_date))
+            conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?)", 
+                         (name, job_title, json.dumps(dates_array)))
+
+    def update_worker_dates(self, name, dates_array):
+        with self._get_connection() as conn:
+            conn.execute("UPDATE workers SET dates_json = ? WHERE name = ?", 
+                         (json.dumps(dates_array), name))
 
     def add_task(self, urgency, description):
         with self._get_connection() as conn:
@@ -45,13 +57,13 @@ class DatabaseHandler:
             conn.execute("INSERT INTO tasks (urgency, description, date_assigned) VALUES (?, ?, ?)", 
                          (urgency, description, est_date))
 
-    def update_task_completion(self, row_number):
-        with self._get_connection() as conn:
-            conn.execute("UPDATE tasks SET date_completed = ? WHERE id = ?", (self._get_est_time(), row_number))
-
     def assign_task_to_worker(self, row_number, worker_name):
         with self._get_connection() as conn:
             conn.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (worker_name, row_number))
+
+    def update_task_completion(self, row_number):
+        with self._get_connection() as conn:
+            conn.execute("UPDATE tasks SET date_completed = ? WHERE id = ?", (self._get_est_time(), row_number))
 
     def delete_task(self, row_number):
         with self._get_connection() as conn:
