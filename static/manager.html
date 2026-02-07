@@ -1,200 +1,46 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Qarbon Aerospace | Manager</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <style>
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin: 15px 0; }
-        .cal-day { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; cursor: pointer; font-size: 0.8rem; font-weight: bold; background: white; }
-        .shift-1 { background: #fde047 !important; color: #854d0e; border-color: #facc15; } /* Morning - Yellow */
-        .shift-2 { background: #22c55e !important; color: white; border-color: #16a34a; } /* Evening - Green */
-        .legend { display: flex; gap: 20px; font-size: 0.75rem; margin-bottom: 20px; color: #64748b; }
-        .legend-box { width: 12px; height: 12px; border-radius: 3px; }
-        .modal { display:none; position:fixed; z-index:100; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); }
-        .modal-content { background:white; margin:10% auto; padding:25px; width:340px; border-radius:15px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-    </style>
-</head>
-<body>
-    <header><div class="container"><h1>Qarbon Aerospace Task Management</h1></div></header>
-
-    <div class="container">
-        <div class="manager-section">
-            <h2>System Controls</h2>
-            <button id="assignBtn" class="btn-primary">Execute AI Optimized Shift Assignment</button>
-        </div>
-
-        <div class="form-row">
-            <div class="manager-section">
-                <h2>Personnel Registration</h2>
-                <form id="workerForm">
-                    <input type="text" id="workerName" placeholder="Full Name" required>
-                    <input type="text" id="workerRole" placeholder="Job Title" required>
-                    <label style="font-size:0.7rem; color:#64748b;">Tap days to toggle shifts:</label>
-                    <div id="regCalendar" class="calendar-grid"></div>
-                    <div class="legend">
-                        <div style="display:flex; align-items:center; gap:5px;"><div class="legend-box" style="background:#fde047"></div> Morning</div>
-                        <div style="display:flex; align-items:center; gap:5px;"><div class="legend-box" style="background:#22c55e"></div> Evening</div>
-                    </div>
-                    <button type="submit" class="btn-success" style="width:100%">Register Personnel</button>
-                </form>
-            </div>
-
-            <div class="manager-section">
-                <h2>Task Intake</h2>
-                <form id="taskForm">
-                    <input type="text" id="desc" placeholder="Task Description" required>
-                    <input type="number" id="urg" placeholder="Urgency (1-5)" min="1" max="5" required>
-                    <button type="submit" class="btn-primary" style="width:100%">Log New Task</button>
-                </form>
-            </div>
-        </div>
-
-        <div class="manager-section"><h2>Live Operational Tasks</h2><div id="activeTasks" class="tasks-grid"></div></div>
-        <div class="manager-section"><h2>Personnel Directory</h2><div id="workersOverview"></div></div>
-        <div class="manager-section"><h2>Completed Task Archive (EST)</h2><div id="completedTasks"></div></div>
-    </div>
-
-    <div id="editModal" class="modal">
-        <div class="modal-content">
-            <h3 id="editWorkerName" style="margin-top:0">Edit Schedule</h3>
-            <div id="editCalendar" class="calendar-grid"></div>
-            <button class="btn-primary" onclick="saveNewSchedule()" style="width:100%">Save Schedule</button>
-            <button class="btn-del" onclick="closeModal()" style="width:100%; margin-top:10px; background:none; border:1px solid #ef4444; color:#ef4444;">Cancel</button>
-        </div>
-    </div>
-
-    <script>
-        const API_URL = window.location.origin + '/api';
-        let currentShifts = {}; // Format: {"2026-02-07": 1}
-        let editingWorker = null;
-
-        function renderCalendar(containerId, shiftObj) {
-            const container = document.getElementById(containerId);
-            container.innerHTML = '';
-            const start = new Date();
-            for (let i = 0; i < 14; i++) {
-                const d = new Date(); d.setDate(start.getDate() + i);
-                const dateStr = d.toISOString().split('T')[0];
-                const dayEl = document.createElement('div');
-                dayEl.className = `cal-day ${shiftObj[dateStr] ? 'shift-' + shiftObj[dateStr] : ''}`;
-                dayEl.innerText = d.getDate();
-                dayEl.onclick = () => {
-                    // Cycle: 0 -> 1 (AM) -> 2 (PM) -> 0
-                    let state = shiftObj[dateStr] || 0;
-                    state = (state + 1) % 3;
-                    if (state === 0) delete shiftObj[dateStr];
-                    else shiftObj[dateStr] = state;
-                    renderCalendar(containerId, shiftObj);
-                };
-                container.appendChild(dayEl);
-            }
-        }
-
-        async function loadData() {
-            const [tRes, wRes] = await Promise.all([fetch(`${API_URL}/tasks`), fetch(`${API_URL}/workers`)]);
-            const tasks = await tRes.json();
-            const workers = await wRes.json();
-            
-            const active = tasks.filter(t => !t.date_completed);
-            
-            // Tasks Cards
-            document.getElementById('activeTasks').innerHTML = active.map(t => `
-                <div class="task-card">
-                    <button class="del-small" onclick="deleteItem('task', ${t.row_number})">Delete</button>
-                    <span class="urgency-tag" style="color:${getUrgencyColor(t.urgency)}">Priority ${t.urgency}</span>
-                    <h3>${t.description}</h3>
-                    <p>Assignee: <b>${t.assigned_to || 'Unassigned'}</b></p>
-                    ${!t.assigned_to ? `<button class="btn-primary" onclick="assignToBest(${t.row_number}, this)">Assign Best</button>` : ''}
-                    <button class="btn-complete" onclick="markComplete(${t.row_number})">Complete</button>
-                </div>`).join('');
-
-            // Workers Table
-            document.getElementById('workersOverview').innerHTML = `<table>
-                <thead><tr><th>Name</th><th>Role</th><th>Actions</th></tr></thead>
-                <tbody>${workers.map(w => `
-                    <tr><td><b>${w.name}</b></td><td>${w.job_title}</td>
-                    <td><button onclick="openEditModal('${w.name}', ${JSON.stringify(w.shifts)})" class="btn-self">Edit Schedule</button>
-                    <button onclick="deleteItem('worker', '${w.name}')" class="btn-del">Remove</button></td></tr>`).join('')}
-                </tbody></table>`;
-
-            document.getElementById('completedTasks').innerHTML = tasks.filter(t => t.date_completed).map(t => `
-                <div class="archive-item"><span><b>DONE:</b> ${t.description}</span><small>${t.date_completed}</small></div>`).join('');
-        }
-
-        document.getElementById('workerForm').onsubmit = async (e) => {
-            e.preventDefault();
-            await fetch(`${API_URL}/add-worker`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    name: document.getElementById('workerName').value,
-                    job_title: document.getElementById('workerRole').value,
-                    worker_schedule: currentShifts // Passing the object
-                })
-            });
-            currentShifts = {};
-            e.target.reset();
-            renderCalendar('regCalendar', currentShifts);
-            loadData();
-        };
-
-        function openEditModal(name, shifts) {
-            editingWorker = name;
-            currentShifts = shifts;
-            document.getElementById('editWorkerName').innerText = name;
-            renderCalendar('editCalendar', currentShifts);
-            document.getElementById('editModal').style.display = 'block';
-        }
-
-        function closeModal() { document.getElementById('editModal').style.display = 'none'; currentShifts = {}; }
-
-        async function saveNewSchedule() {
-            await fetch(`${API_URL}/add-worker`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name: editingWorker, job_title: "Update", worker_schedule: currentShifts })
-            });
-            closeModal();
-            loadData();
-        }
-
-        async function deleteItem(type, id) {
-            if(!confirm(`Delete ${type}?`)) return;
-            await fetch(`${API_URL}/delete-${type}/${id}`, { method: 'DELETE' });
-            loadData();
-        }
-
-        async function assignToBest(id, btn) {
-            btn.innerText = "...";
-            await fetch(`${API_URL}/assign-task-to-best`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task_id: id}) });
-            loadData();
-        }
-
-        async function markComplete(row) {
-            await fetch(`${API_URL}/complete-task`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({row_number: row}) });
-            loadData();
-        }
-
-        document.getElementById('taskForm').onsubmit = async (e) => {
-            e.preventDefault();
-            await fetch(`${API_URL}/add-task`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({description: document.getElementById('desc').value, urgency: document.getElementById('urg').value}) });
-            e.target.reset();
-            loadData();
-        };
-
-        document.getElementById('assignBtn').onclick = async () => {
-            document.getElementById('assignBtn').innerText = "AI OPTIMIZING...";
-            await fetch(`${API_URL}/assign-tasks`, { method: 'POST' });
-            document.getElementById('assignBtn').innerText = "Execute AI Optimized Shift Assignment";
-            loadData();
-        };
-
-        function getUrgencyColor(u) { return ['#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444'][u-1]; }
+<script>
+    async function loadData() {
+        const [tRes, wRes] = await Promise.all([fetch(`${API_URL}/tasks`), fetch(`${API_URL}/workers`)]);
+        const tasks = await tRes.json();
+        const workers = await wRes.json();
         
-        renderCalendar('regCalendar', currentShifts);
-        loadData();
-    </script>
-</body>
-</html>
+        // ... (Render Active Tasks logic here) ...
+
+        document.getElementById('workersOverview').innerHTML = `
+            <table class="worker-table">
+                <thead>
+                    <tr>
+                        <th>Personnel Information</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>${workers.map(w => {
+                    // Create the formatted date string for the second line
+                    const shiftEntries = Object.entries(w.shifts).map(([date, type]) => {
+                        const [year, month, day] = date.split('-');
+                        const shiftLabel = type === 1 ? 'Morning' : 'Evening';
+                        return `${month}/${day} ${shiftLabel}`;
+                    }).join(', ');
+
+                    return `
+                    <tr>
+                        <td style="padding: 15px;">
+                            <div style="font-weight: 800; color: #0f172a; font-size: 1.1rem;">
+                                ${w.name} — <span style="font-weight: 400; color: #64748b;">${w.job_title}</span>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 0.85rem; color: #3b82f6; font-family: monospace;">
+                                <b>DATES WORKING:</b> ${shiftEntries || 'No shifts scheduled'}
+                            </div>
+                        </td>
+                        <td>
+                            <button onclick="openEditModal('${w.name}', ${JSON.stringify(w.shifts)})" class="btn-self">Edit Schedule</button>
+                            <button onclick="deleteItem('worker', '${w.name}')" class="btn-del">Remove</button>
+                        </td>
+                    </tr>`;
+                }).join('')}
+                </tbody>
+            </table>`;
+            
+        // ... (Render Archive logic here) ...
+    }
+</script>

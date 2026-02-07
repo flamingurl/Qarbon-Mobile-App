@@ -31,14 +31,8 @@ def get_workers():
 @app.route('/api/add-worker', methods=['POST'])
 def add_worker():
     d = request.json
-    # Logic handles the new bi-weekly date range
-    db.add_worker(d['name'], d['job_title'], d['start_date'], d['end_date'])
-    return jsonify({'success': True})
-
-@app.route('/api/add-task', methods=['POST'])
-def add_task():
-    d = request.json
-    db.add_task(d['urgency'], d['description'])
+    # Logic Fix: Passing the shift dictionary to the handler
+    db.add_worker(d['name'], d['job_title'], d['worker_schedule'])
     return jsonify({'success': True})
 
 @app.route('/api/assign-task-to-best', methods=['POST'])
@@ -46,18 +40,13 @@ def assign_to_best():
     task_id = request.json.get('task_id')
     tasks = db.read_tasks()
     workers = db.read_workers()
-    
     target_task = next((t for t in tasks if t['row_number'] == task_id), None)
-    if not target_task:
-        return jsonify({'success': False, 'message': 'Task not found'})
-
-    result = ai_engine.get_best_worker_for_task(target_task, workers)
     
+    result = ai_engine.get_best_worker_for_task(target_task, workers)
     if result and result.get('worker_name'):
         db.assign_task_to_worker(task_id, result['worker_name'])
         return jsonify({'success': True, 'worker': result['worker_name']})
-    
-    return jsonify({'success': False, 'message': 'No qualified personnel currently scheduled.'})
+    return jsonify({'success': False, 'message': 'No qualified personnel scheduled.'})
 
 @app.route('/api/complete-task', methods=['POST'])
 def complete_task():
@@ -74,7 +63,15 @@ def delete_worker(name):
     db.delete_worker(name)
     return jsonify({'success': True})
 
+@app.route('/api/assign-tasks', methods=['POST'])
+def assign_bulk():
+    workers = db.read_workers()
+    tasks = db.read_tasks()
+    assignments = ai_engine.assign_tasks_one_per_person(workers, tasks)
+    for name, rows in assignments.items():
+        if rows: db.assign_task_to_worker(rows[0], name)
+    return jsonify({'success': True})
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
- 

@@ -1,7 +1,7 @@
 import sqlite3
+import json
 from datetime import datetime, timedelta
 import os
-import json
 
 class DatabaseHandler:
     def __init__(self, db_path='data/qarbon_app.db'):
@@ -13,12 +13,8 @@ class DatabaseHandler:
     def _get_connection(self):
         return sqlite3.connect(self.db_path)
 
-    def _get_est_time(self):
-        return (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y %I:%M %p')
-
     def _create_tables(self):
         with self._get_connection() as conn:
-            # dates_json stores: {"2026-02-07": 1, "2026-02-08": 2} where 1=AM, 2=PM
             conn.execute('''CREATE TABLE IF NOT EXISTS workers 
                             (name TEXT PRIMARY KEY, job_title TEXT, dates_json TEXT)''')
             conn.execute('''CREATE TABLE IF NOT EXISTS tasks 
@@ -32,6 +28,7 @@ class DatabaseHandler:
             workers = []
             for r in rows:
                 w = dict(r)
+                # Parse the JSON string back into a dictionary for the frontend
                 w['shifts'] = json.loads(w['dates_json']) if w['dates_json'] else {}
                 workers.append(w)
             return workers
@@ -43,22 +40,18 @@ class DatabaseHandler:
 
     def add_worker(self, name, job_title, shifts_dict):
         with self._get_connection() as conn:
+            # Save the dictionary as a JSON string
             conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?)", 
                          (name, job_title, json.dumps(shifts_dict)))
-
-    def add_task(self, urgency, description):
-        with self._get_connection() as conn:
-            est_date = (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y')
-            conn.execute("INSERT INTO tasks (urgency, description, date_assigned) VALUES (?, ?, ?)", 
-                         (urgency, description, est_date))
 
     def assign_task_to_worker(self, row_number, worker_name):
         with self._get_connection() as conn:
             conn.execute("UPDATE tasks SET assigned_to = ? WHERE id = ?", (worker_name, row_number))
 
     def update_task_completion(self, row_number):
+        est_time = (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y %I:%M %p')
         with self._get_connection() as conn:
-            conn.execute("UPDATE tasks SET date_completed = ? WHERE id = ?", (self._get_est_time(), row_number))
+            conn.execute("UPDATE tasks SET date_completed = ? WHERE id = ?", (est_time, row_number))
 
     def delete_task(self, row_number):
         with self._get_connection() as conn:
