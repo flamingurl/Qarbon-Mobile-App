@@ -6,8 +6,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-# We set static_folder to '.' because your files are in the root directory
-app = Flask(__name__, static_url_path='', static_folder='.')
+# static_folder='static' tells Flask where your HTML/CSS/JS files are
+app = Flask(__name__, static_folder='static')
 CORS(app)
 
 db = DatabaseHandler()
@@ -15,12 +15,12 @@ ai_engine = AIEngine(os.getenv("OPENAI_API_KEY"))
 
 @app.route('/')
 def route_index(): 
-    # Serves manager.html as the primary page
-    return send_from_directory('.', 'manager.html')
+    # This fixes the 404 by serving your manager page at the root URL
+    return send_from_directory(app.static_folder, 'manager.html')
 
 @app.route('/manager')
 def route_manager(): 
-    return send_from_directory('.', 'manager.html')
+    return send_from_directory(app.static_folder, 'manager.html')
 
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks(): 
