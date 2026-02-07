@@ -17,8 +17,9 @@ class DatabaseHandler:
 
     def _create_tables(self):
         with self._get_connection() as conn:
+            # Added start_date and end_date for calendar tracking
             conn.execute('''CREATE TABLE IF NOT EXISTS workers 
-                            (name TEXT PRIMARY KEY, job_title TEXT, schedule TEXT)''')
+                            (name TEXT PRIMARY KEY, job_title TEXT, start_date TEXT, end_date TEXT)''')
             conn.execute('''CREATE TABLE IF NOT EXISTS tasks 
                             (id INTEGER PRIMARY KEY AUTOINCREMENT, urgency INTEGER, description TEXT, 
                              date_assigned TEXT, date_completed TEXT, assigned_to TEXT)''')
@@ -33,10 +34,10 @@ class DatabaseHandler:
             conn.row_factory = sqlite3.Row
             return [dict(row_number=r['id'], **r) for r in conn.execute("SELECT * FROM tasks").fetchall()]
 
-    def add_worker(self, name, job_title, schedule):
+    def add_worker(self, name, job_title, start_date, end_date):
         with self._get_connection() as conn:
-            conn.execute("INSERT OR REPLACE INTO workers (name, job_title, schedule) VALUES (?, ?, ?)", 
-                         (name, job_title, schedule))
+            conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?, ?)", 
+                         (name, job_title, start_date, end_date))
 
     def add_task(self, urgency, description):
         with self._get_connection() as conn:

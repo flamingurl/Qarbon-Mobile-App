@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Qarbon Aerospace | Task Management</title>
+    <title>Qarbon Aerospace | Manager</title>
     <link rel="manifest" href="/static/manifest.json">
     <link rel="stylesheet" href="/static/style.css">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 
@@ -18,19 +16,23 @@
     </header>
 
     <div class="container">
-        <div class="manager-section">
-            <h2>System Controls</h2>
-            <button id="assignBtn" class="btn-primary">Execute AI Optimized Shift Assignment</button>
-        </div>
-
         <div class="form-row">
             <div class="manager-section">
                 <h2>Personnel Registration</h2>
                 <form id="workerForm">
                     <input type="text" id="workerName" placeholder="Full Name" required>
                     <input type="text" id="workerRole" placeholder="Job Title" required>
-                    <input type="text" id="workerSchedule" placeholder="Shift (e.g. 0800-1600)" required>
-                    <button type="submit" class="btn-success">Register Personnel</button>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <div style="flex:1">
+                            <label style="font-size:0.7rem; color: #64748b">Start Date</label>
+                            <input type="date" id="startDate" required>
+                        </div>
+                        <div style="flex:1">
+                            <label style="font-size:0.7rem; color: #64748b">End Date</label>
+                            <input type="date" id="endDate" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-success">Register Shift</button>
                 </form>
             </div>
 
@@ -53,7 +55,7 @@
             <h2>Active Personnel Directory</h2>
             <div id="workersOverview"></div>
         </div>
-
+        
         <div class="manager-section">
             <h2>Completed Task Archive (EST)</h2>
             <div id="completedTasks"></div>
@@ -64,90 +66,76 @@
         const API_URL = window.location.origin + '/api';
 
         async function loadData() {
-            try {
-                const [tRes, wRes] = await Promise.all([
-                    fetch(`${API_URL}/tasks`),
-                    fetch(`${API_URL}/workers`)
-                ]);
-                const tasks = await tRes.json();
-                const workers = await wRes.json();
-                
-                const activeTasks = tasks.filter(t => !t.date_completed);
-                const currentlyAssigned = new Set(activeTasks.map(t => t.assigned_to).filter(n => n));
+            const [tRes, wRes] = await Promise.all([fetch(`${API_URL}/tasks`), fetch(`${API_URL}/workers`)]);
+            const tasks = await tRes.json();
+            const workers = await wRes.json();
+            
+            const active = tasks.filter(t => !t.date_completed);
+            const assignedSet = new Set(active.map(t => t.assigned_to).filter(n => n));
 
-                // 1. Render Active Tasks
-                document.getElementById('activeTasks').innerHTML = activeTasks.map(t => `
-                    <div class="task-card">
-                        <button class="del-small" onclick="deleteItem('task', ${t.row_number})">Delete</button>
-                        <span class="urgency-tag" style="color:${getUrgencyColor(t.urgency)}">Priority ${t.urgency}</span>
-                        <h3>${t.description}</h3>
-                        <p>Assignee: <b>${t.assigned_to || 'Unassigned'}</b></p>
-                        <button class="btn-complete" onclick="markComplete(${t.row_number})">Complete Task</button>
-                    </div>`).join('');
+            document.getElementById('activeTasks').innerHTML = active.map(t => `
+                <div class="task-card">
+                    <button class="del-small" onclick="deleteItem('task', ${t.row_number})">Delete</button>
+                    <span class="urgency-tag" style="color:${getUrgencyColor(t.urgency)}">Priority ${t.urgency}</span>
+                    <h3>${t.description}</h3>
+                    <p>Assignee: <b>${t.assigned_to || 'Unassigned'}</b></p>
+                    ${!t.assigned_to ? `<button class="btn-primary" style="font-size:0.8rem; padding:8px" onclick="assignToBest(${t.row_number}, this)">Assign to Best Employee</button>` : ''}
+                    <button class="btn-complete" onclick="markComplete(${t.row_number})">Complete Task</button>
+                </div>`).join('');
 
-                // 2. Render Worker Directory with Status Badges
-                document.getElementById('workersOverview').innerHTML = `
-                    <table class="worker-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Role</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>${workers.map(w => {
-                            const assigned = currentlyAssigned.has(w.name);
-                            return `
-                            <tr>
-                                <td><b>${w.name}</b></td>
-                                <td>${w.job_title}</td>
-                                <td>
-                                    <span class="status-badge ${assigned ? 'badge-assigned' : 'badge-unassigned'}">
-                                        ${assigned ? 'ASSIGNED' : 'UNASSIGNED'}
-                                    </span>
-                                </td>
-                                <td>
-                                    <button onclick="assignSelf('${w.name}', this)" class="btn-action">Assign</button>
-                                    <button onclick="deleteItem('worker', '${w.name}')" class="btn-del">Remove</button>
-                                </td>
-                            </tr>`;
-                        }).join('')}
+            document.getElementById('workersOverview').innerHTML = `
+                <table class="worker-table">
+                    <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody>${workers.map(w => `
+                        <tr>
+                            <td><b>${w.name}</b></td>
+                            <td>${w.job_title}</td>
+                            <td><span class="status-badge ${assignedSet.has(w.name) ? 'badge-assigned' : 'badge-unassigned'}">
+                                ${assignedSet.has(w.name) ? 'ASSIGNED' : 'UNASSIGNED'}</span>
+                            </td>
+                            <td><button onclick="deleteItem('worker', '${w.name}')" class="btn-del">Remove</button></td>
+                        </tr>`).join('')}
                     </tbody>
                 </table>`;
 
-                // 3. Render Completed Archive
-                document.getElementById('completedTasks').innerHTML = tasks.filter(t => t.date_completed).map(t => `
-                    <div class="archive-item">
-                        <span><b>DONE:</b> ${t.description} (${t.assigned_to})</span>
-                        <small>${t.date_completed} EST</small>
-                    </div>`).join('');
-                    
-            } catch (err) { console.error("Sync Error:", err); }
+            document.getElementById('completedTasks').innerHTML = tasks.filter(t => t.date_completed).map(t => `
+                <div class="archive-item"><span><b>DONE:</b> ${t.description} (${t.assigned_to})</span><small>${t.date_completed}</small></div>
+            `).join('');
         }
+
+        async function assignToBest(taskId, btn) {
+            btn.innerText = "...";
+            btn.disabled = true;
+            const res = await fetch(`${API_URL}/assign-task-to-best`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({task_id: taskId})
+            });
+            const result = await res.json();
+            if (!result.success) alert(result.message);
+            loadData();
+        }
+
+        document.getElementById('workerForm').onsubmit = async (e) => {
+            e.preventDefault();
+            await fetch(`${API_URL}/add-worker`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({
+                    name: document.getElementById('workerName').value,
+                    job_title: document.getElementById('workerRole').value,
+                    start_date: document.getElementById('startDate').value,
+                    end_date: document.getElementById('endDate').value
+                }) 
+            });
+            e.target.reset();
+            loadData();
+        };
 
         async function deleteItem(type, id) {
             if(!confirm(`Delete ${type}?`)) return;
             await fetch(`${API_URL}/delete-${type}/${id}`, { method: 'DELETE' });
             loadData();
-        }
-
-        async function assignSelf(name, btn) {
-            btn.innerText = "...";
-            btn.disabled = true;
-            try {
-                const res = await fetch(`${API_URL}/assign-self`, { 
-                    method: 'POST', 
-                    headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({worker_name: name}) 
-                });
-                const result = await res.json();
-                if (!result.success) alert(result.message);
-            } finally {
-                btn.innerText = "Assign";
-                btn.disabled = false;
-                loadData();
-            }
         }
 
         async function markComplete(row) {
@@ -159,51 +147,18 @@
             loadData();
         }
 
-        // --- FIXED SUBMIT LOGIC ---
-        document.getElementById('workerForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const name = document.getElementById('workerName').value;
-            const job_title = document.getElementById('workerRole').value;
-            const schedule = document.getElementById('workerSchedule').value;
-
-            await fetch(`${API_URL}/add-worker`, { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({
-                    name: name,
-                    job_title: job_title,
-                    worker_schedule: schedule // Matches the key app.py is looking for
-                }) 
-            });
-            e.target.reset();
-            loadData();
-        };
-
         document.getElementById('taskForm').onsubmit = async (e) => {
             e.preventDefault();
             await fetch(`${API_URL}/add-task`, { 
                 method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({
-                    description: document.getElementById('desc').value, 
-                    urgency: document.getElementById('urg').value
-                }) 
+                body: JSON.stringify({description: document.getElementById('desc').value, urgency: document.getElementById('urg').value}) 
             });
             e.target.reset();
             loadData();
         };
 
-        document.getElementById('assignBtn').onclick = async () => {
-            document.getElementById('assignBtn').innerText = "AI OPTIMIZING...";
-            await fetch(`${API_URL}/assign-tasks`, { method: 'POST' });
-            document.getElementById('assignBtn').innerText = "Execute AI Optimized Shift Assignment";
-            loadData();
-        };
-
-        function getUrgencyColor(u) {
-            return ['#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444'][u-1];
-        }
-
+        function getUrgencyColor(u) { return ['#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444'][u-1]; }
         loadData();
     </script>
 </body>
