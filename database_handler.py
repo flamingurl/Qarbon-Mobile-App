@@ -13,7 +13,6 @@ class DatabaseHandler:
         return sqlite3.connect(self.db_path)
 
     def _get_est_time(self):
-        # Adjusts Render's UTC time to Eastern Standard Time (UTC-5)
         return (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y %I:%M %p')
 
     def _create_tables(self):
@@ -32,12 +31,12 @@ class DatabaseHandler:
     def read_tasks(self):
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
-            # row_number alias kept for frontend compatibility
             return [dict(row_number=r['id'], **r) for r in conn.execute("SELECT * FROM tasks").fetchall()]
 
     def add_worker(self, name, job_title, schedule):
         with self._get_connection() as conn:
-            conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?)", (name, job_title, schedule))
+            conn.execute("INSERT OR REPLACE INTO workers (name, job_title, schedule) VALUES (?, ?, ?)", 
+                         (name, job_title, schedule))
 
     def add_task(self, urgency, description):
         with self._get_connection() as conn:

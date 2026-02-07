@@ -9,7 +9,7 @@ load_dotenv()
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
-# Use SQLite Database
+# Initialize SQLite Database
 db = DatabaseHandler()
 ai_engine = AIEngine(os.getenv("OPENAI_API_KEY"))
 
@@ -22,14 +22,17 @@ def route_manager():
     return send_from_directory(app.static_folder, 'manager.html')
 
 @app.route('/api/tasks', methods=['GET'])
-def get_tasks(): return jsonify(db.read_tasks())
+def get_tasks(): 
+    return jsonify(db.read_tasks())
 
 @app.route('/api/workers', methods=['GET'])
-def get_workers(): return jsonify(db.read_workers())
+def get_workers(): 
+    return jsonify(db.read_workers())
 
 @app.route('/api/add-worker', methods=['POST'])
 def add_worker():
     d = request.json
+    # Logic Fix: Matches the IDs used in manager.html
     db.add_worker(d['name'], d['job_title'], d['worker_schedule'])
     return jsonify({'success': True})
 
@@ -60,14 +63,17 @@ def assign_bulk():
     tasks = db.read_tasks()
     assignments = ai_engine.assign_tasks_one_per_person(workers, tasks)
     for name, rows in assignments.items():
-        if rows: db.assign_task_to_worker(rows[0], name)
+        if rows: 
+            db.assign_task_to_worker(rows[0], name)
     return jsonify({'success': True})
 
 @app.route('/api/assign-self', methods=['POST'])
 def assign_self():
     worker_name = request.json.get('worker_name')
-    worker = next((w for w in db.read_workers() if w['name'] == worker_name), None)
-    available_tasks = [t for t in db.read_tasks() if not t['assigned_to'] and not t['date_completed']]
+    workers = db.read_workers()
+    tasks = db.read_tasks()
+    worker = next((w for w in workers if w['name'] == worker_name), None)
+    available_tasks = [t for t in tasks if not t['assigned_to'] and not t['date_completed']]
     
     assignment = ai_engine.get_single_qualified_assignment(worker, available_tasks)
     if assignment and assignment.get('row_number'):
