@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from database_handler import DatabaseHandler 
+from database_handler import DatabaseHandler
 from ai_engine import AIEngine
 import os
 from dotenv import load_dotenv
@@ -9,7 +9,8 @@ load_dotenv()
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
-excel_handler = ExcelHandler()
+# Use SQLite Database
+db = DatabaseHandler()
 ai_engine = AIEngine(os.getenv("OPENAI_API_KEY"))
 
 @app.route('/')
@@ -21,70 +22,58 @@ def route_manager():
     return send_from_directory(app.static_folder, 'manager.html')
 
 @app.route('/api/tasks', methods=['GET'])
-def get_tasks(): 
-    return jsonify(excel_handler.read_tasks())
+def get_tasks(): return jsonify(db.read_tasks())
 
 @app.route('/api/workers', methods=['GET'])
-def get_workers(): 
-    return jsonify(excel_handler.read_workers())
+def get_workers(): return jsonify(db.read_workers())
 
 @app.route('/api/add-worker', methods=['POST'])
 def add_worker():
     d = request.json
-    excel_handler.add_worker(d['name'], d['job_title'], d['date_working'])
+    db.add_worker(d['name'], d['job_title'], d['worker_schedule'])
     return jsonify({'success': True})
 
 @app.route('/api/add-task', methods=['POST'])
 def add_task():
     d = request.json
-    excel_handler.add_task(d['urgency'], d['description'])
+    db.add_task(d['urgency'], d['description'])
     return jsonify({'success': True})
 
 @app.route('/api/complete-task', methods=['POST'])
 def complete_task():
-    excel_handler.update_task_completion(request.json['row_number'])
+    db.update_task_completion(request.json['row_number'])
     return jsonify({'success': True})
 
 @app.route('/api/delete-task/<int:row>', methods=['DELETE'])
 def delete_task(row):
-    excel_handler.delete_task(row)
+    db.delete_task(row)
     return jsonify({'success': True})
 
 @app.route('/api/delete-worker/<name>', methods=['DELETE'])
 def delete_worker(name):
-    excel_handler.delete_worker(name)
+    db.delete_worker(name)
     return jsonify({'success': True})
 
 @app.route('/api/assign-tasks', methods=['POST'])
 def assign_bulk():
-    workers = excel_handler.read_workers()
-    tasks = excel_handler.read_tasks()
+    workers = db.read_workers()
+    tasks = db.read_tasks()
     assignments = ai_engine.assign_tasks_one_per_person(workers, tasks)
     for name, rows in assignments.items():
-        if rows: 
-            excel_handler.assign_task_to_worker(rows[0], name)
+        if rows: db.assign_task_to_worker(rows[0], name)
     return jsonify({'success': True})
 
 @app.route('/api/assign-self', methods=['POST'])
 def assign_self():
     worker_name = request.json.get('worker_name')
-    workers = excel_handler.read_workers()
-    tasks = excel_handler.read_tasks()
+    worker = next((w for w in db.read_workers() if w['name'] == worker_name), None)
+    available_tasks = [t for t in db.read_tasks() if not t['assigned_to'] and not t['date_completed']]
     
-    worker = next((w for w in workers if w['name'] == worker_name), None)
-    if not worker:
-        return jsonify({'success': False, 'message': 'Worker not found'})
-
-    available_tasks = [t for t in tasks if not t['assigned_to'] and not t['date_completed']]
-    
-    # AI determines if the worker is qualified for any available tasks
     assignment = ai_engine.get_single_qualified_assignment(worker, available_tasks)
-    
     if assignment and assignment.get('row_number'):
-        excel_handler.assign_task_to_worker(assignment['row_number'], worker_name)
+        db.assign_task_to_worker(assignment['row_number'], worker_name)
         return jsonify({'success': True})
-    
-    return jsonify({'success': False, 'message': 'No qualified tasks found for this role'})
+    return jsonify({'success': False, 'message': 'No qualified tasks found'})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))

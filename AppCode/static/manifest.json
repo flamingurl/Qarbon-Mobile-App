@@ -1,7 +1,6 @@
 {
-  "name": "Qarbon Aerospace Task Manager",
-  "short_name": "QarbonTask",
-  "description": "Industrial task assignment and personnel tracking system.",
+  "name": "Qarbon Task Manager",
+  "short_name": "QarbonApp",
   "start_url": "/manager",
   "display": "standalone",
   "background_color": "#0f172a",

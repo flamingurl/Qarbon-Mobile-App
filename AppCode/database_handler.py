@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import os
 
 class DatabaseHandler:
-    def __init__(self, db_path='data/factory.db'):
+    def __init__(self, db_path='data/qarbon_app.db'):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         self.db_path = os.path.join(base_dir, db_path)
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -13,39 +13,37 @@ class DatabaseHandler:
         return sqlite3.connect(self.db_path)
 
     def _get_est_time(self):
-        # Offsets UTC to EST
+        # Adjusts Render's UTC time to Eastern Standard Time (UTC-5)
         return (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y %I:%M %p')
 
     def _create_tables(self):
         with self._get_connection() as conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS workers 
-                            (id INTEGER PRIMARY KEY, name TEXT UNIQUE, job_title TEXT, schedule TEXT)''')
+                            (name TEXT PRIMARY KEY, job_title TEXT, schedule TEXT)''')
             conn.execute('''CREATE TABLE IF NOT EXISTS tasks 
-                            (id INTEGER PRIMARY KEY, urgency INTEGER, description TEXT, 
+                            (id INTEGER PRIMARY KEY AUTOINCREMENT, urgency INTEGER, description TEXT, 
                              date_assigned TEXT, date_completed TEXT, assigned_to TEXT)''')
 
     def read_workers(self):
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM workers").fetchall()
-            return [dict(r) for r in rows]
+            return [dict(r) for r in conn.execute("SELECT * FROM workers").fetchall()]
 
     def read_tasks(self):
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT id as row_number, * FROM tasks").fetchall()
-            return [dict(r) for r in rows]
+            # row_number alias kept for frontend compatibility
+            return [dict(row_number=r['id'], **r) for r in conn.execute("SELECT * FROM tasks").fetchall()]
 
     def add_worker(self, name, job_title, schedule):
         with self._get_connection() as conn:
-            conn.execute("INSERT OR REPLACE INTO workers (name, job_title, schedule) VALUES (?, ?, ?)",
-                         (name, job_title, schedule))
+            conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?)", (name, job_title, schedule))
 
     def add_task(self, urgency, description):
         with self._get_connection() as conn:
-            date_assigned = (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y')
-            conn.execute("INSERT INTO tasks (urgency, description, date_assigned) VALUES (?, ?, ?)",
-                         (urgency, description, date_assigned))
+            est_date = (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y')
+            conn.execute("INSERT INTO tasks (urgency, description, date_assigned) VALUES (?, ?, ?)", 
+                         (urgency, description, est_date))
 
     def update_task_completion(self, row_number):
         with self._get_connection() as conn:
