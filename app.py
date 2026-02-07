@@ -6,8 +6,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-# We set static_folder to '' because your files are in the root directory
-app = Flask(__name__, static_folder='')
+# Setting static_url_path to empty and static_folder to current directory
+app = Flask(__name__, static_url_path='', static_folder='.')
 CORS(app)
 
 db = DatabaseHandler()
@@ -15,11 +15,12 @@ ai_engine = AIEngine(os.getenv("OPENAI_API_KEY"))
 
 @app.route('/')
 def route_index(): 
-    return send_from_directory('', 'index.html')
+    # Directly serving manager.html as the landing page
+    return send_from_directory('.', 'manager.html')
 
 @app.route('/manager')
 def route_manager(): 
-    return send_from_directory('', 'manager.html')
+    return send_from_directory('.', 'manager.html')
 
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks(): 
