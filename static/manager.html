@@ -37,23 +37,23 @@
             <div class="manager-section">
                 <h2>Task Intake</h2>
                 <form id="taskForm">
-                    <input type="text" id="desc" placeholder="Task Description" required>
-                    <input type="number" id="urg" placeholder="Urgency (1-5)" min="1" max="5" required>
+                    <input type="text" id="taskDesc" placeholder="Task Description" required>
+                    <input type="number" id="taskUrg" placeholder="Urgency (1-5)" min="1" max="5" required>
                     <button type="submit" class="btn-primary" style="width:100%">Log New Task</button>
                 </form>
             </div>
         </div>
 
-        <div class="manager-section"><h2>Live Tasks</h2><div id="activeTasks" class="tasks-grid"></div></div>
-        <div class="manager-section"><h2>Personnel Directory</h2><div id="workersOverview"></div></div>
+        <div class="manager-section"><h2>Live Operational Tasks</h2><div id="activeTasks" class="tasks-grid"></div></div>
+        <div class="manager-section"><h2>Active Personnel Directory</h2><div id="workersOverview"></div></div>
     </div>
 
     <div id="editModal" class="modal">
         <div class="modal-content">
-            <h3 id="editWorkerName">Edit Schedule</h3>
+            <h3 id="editWorkerName" style="margin-top:0">Edit Schedule</h3>
             <div id="editCalendar" class="calendar-grid"></div>
-            <button class="btn-primary" onclick="saveNewSchedule()" style="width:100%">Save</button>
-            <button onclick="closeModal()" style="width:100%; margin-top:5px; border:none; background:none; color:red;">Cancel</button>
+            <button class="btn-primary" onclick="saveNewSchedule()" style="width:100%">Save Schedule</button>
+            <button onclick="closeModal()" style="width:100%; margin-top:5px; border:none; background:none; color:red; cursor:pointer;">Cancel</button>
         </div>
     </div>
 
@@ -84,37 +84,42 @@
         }
 
         async function loadData() {
-            const [tRes, wRes] = await Promise.all([fetch(`${API_URL}/tasks`), fetch(`${API_URL}/workers`)]);
-            const tasks = await tRes.json();
-            const workers = await wRes.json();
-            
-            document.getElementById('activeTasks').innerHTML = tasks.filter(t => !t.date_completed).map(t => `
-                <div class="task-card">
-                    <span style="font-size:0.7rem; font-weight:bold; color:red">PRIORITY ${t.urgency}</span>
-                    <h3>${t.description}</h3>
-                    <p>Assigned: ${t.assigned_to || 'Pending'}</p>
-                    ${!t.assigned_to ? `<button class="btn-primary" onclick="assignBest(${t.row_number}, this)">Assign Best</button>` : ''}
-                    <button class="btn-complete" onclick="markComplete(${t.row_number})">Complete</button>
-                </div>`).join('');
+            try {
+                const [tRes, wRes] = await Promise.all([fetch(`${API_URL}/tasks`), fetch(`${API_URL}/workers`)]);
+                const tasks = await tRes.json();
+                const workers = await wRes.json();
+                
+                // Tasks Rendering
+                document.getElementById('activeTasks').innerHTML = tasks.filter(t => !t.date_completed).map(t => `
+                    <div class="task-card">
+                        <button class="del-small" onclick="deleteItem('task', ${t.row_number})">Delete</button>
+                        <span style="font-size:0.7rem; font-weight:bold; color:red">PRIORITY ${t.urgency}</span>
+                        <h3>${t.description}</h3>
+                        <p>Assigned: ${t.assigned_to || 'Pending'}</p>
+                        ${!t.assigned_to ? `<button class="btn-primary" style="font-size:0.8rem" onclick="assignBest(${t.row_number}, this)">Assign Best</button>` : ''}
+                        <button class="btn-complete" onclick="markComplete(${t.row_number})">Complete</button>
+                    </div>`).join('');
 
-            document.getElementById('workersOverview').innerHTML = `<table class="worker-table">
-                <tbody>${workers.map(w => {
-                    const shiftText = Object.entries(w.shifts).map(([date, type]) => {
-                        const [y, m, d] = date.split('-');
-                        return `${m}/${d} ${type === 1 ? 'AM' : 'PM'}`;
-                    }).join(', ');
-                    return `
-                    <tr>
-                        <td style="padding:15px; border-bottom:1px solid #eee">
-                            <div style="font-weight:bold; font-size:1.1rem">${w.name} — <span style="font-weight:normal; color:#666">${w.job_title}</span></div>
-                            <div style="font-size:0.85rem; color:#3b82f6; margin-top:4px"><b>DATES WORKING:</b> ${shiftText || 'None scheduled'}</div>
-                        </td>
-                        <td>
-                            <button onclick="openEditModal('${w.name}', '${w.job_title}', ${JSON.stringify(w.shifts)})" class="btn-self">Edit</button>
-                            <button onclick="deleteItem('worker', '${w.name}')" class="btn-del">X</button>
-                        </td>
-                    </tr>`;
-                }).join('')}</tbody></table>`;
+                // Workers Rendering (Two Line Display)
+                document.getElementById('workersOverview').innerHTML = `<table class="worker-table">
+                    <tbody>${workers.map(w => {
+                        const shiftEntries = Object.entries(w.shifts).map(([date, type]) => {
+                            const [y, m, d] = date.split('-');
+                            return `${m}/${d} ${type === 1 ? 'AM' : 'PM'}`;
+                        }).join(', ');
+                        return `
+                        <tr>
+                            <td style="padding:15px; border-bottom:1px solid #eee">
+                                <div style="font-weight:bold; font-size:1.1rem">${w.name} — <span style="font-weight:normal; color:#666">${w.job_title}</span></div>
+                                <div style="font-size:0.85rem; color:#3b82f6; margin-top:4px"><b>DATES WORKING:</b> ${shiftEntries || 'None scheduled'}</div>
+                            </td>
+                            <td>
+                                <button onclick="openEditModal('${w.name}', '${w.job_title}', ${JSON.stringify(w.shifts)})" class="btn-self">Edit Schedule</button>
+                                <button onclick="deleteItem('worker', '${w.name}')" class="btn-del">X</button>
+                            </td>
+                        </tr>`;
+                    }).join('')}</tbody></table>`;
+            } catch (e) { console.error("UI Sync Error:", e); }
         }
 
         document.getElementById('workerForm').onsubmit = async (e) => {
@@ -129,6 +134,20 @@
                 })
             });
             currentShifts = {}; e.target.reset(); renderCalendar('regCalendar', currentShifts); loadData();
+        };
+
+        document.getElementById('taskForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const desc = document.getElementById('taskDesc').value;
+            const urg = document.getElementById('taskUrg').value;
+            
+            await fetch(`${API_URL}/add-task`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ description: desc, urgency: urg })
+            });
+            e.target.reset();
+            loadData();
         };
 
         function openEditModal(name, role, shifts) {
@@ -165,12 +184,6 @@
             await fetch(`${API_URL}/delete-${type}/${id}`, { method: 'DELETE' });
             loadData();
         }
-
-        document.getElementById('taskForm').onsubmit = async (e) => {
-            e.preventDefault();
-            await fetch(`${API_URL}/add-task`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({description: document.getElementById('desc').value, urgency: document.getElementById('urg').value}) });
-            e.target.reset(); loadData();
-        };
 
         renderCalendar('regCalendar', currentShifts);
         loadData();

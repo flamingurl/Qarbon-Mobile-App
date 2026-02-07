@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-# Flask needs to know that your HTML/CSS is inside the 'static' folder
+# Set static_folder to 'static' to match your folder tree
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
@@ -38,6 +38,7 @@ def add_worker():
 @app.route('/api/add-task', methods=['POST'])
 def add_task():
     d = request.json
+    # Logic Fix: Ensuring keys match the JavaScript fetch request
     db.add_task(d['urgency'], d['description'])
     return jsonify({'success': True})
 

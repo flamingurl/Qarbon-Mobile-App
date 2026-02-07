@@ -35,12 +35,21 @@ class DatabaseHandler:
     def read_tasks(self):
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
-            return [dict(row_number=r['id'], **r) for r in conn.execute("SELECT * FROM tasks").fetchall()]
+            # 'id as row_number' ensures frontend compatibility
+            rows = conn.execute("SELECT id as row_number, * FROM tasks").fetchall()
+            return [dict(r) for r in rows]
 
     def add_worker(self, name, job_title, shifts_dict):
         with self._get_connection() as conn:
             conn.execute("INSERT OR REPLACE INTO workers VALUES (?, ?, ?)", 
                          (name, job_title, json.dumps(shifts_dict)))
+
+    def add_task(self, urgency, description):
+        # Timezone offset for EST
+        est_date = (datetime.utcnow() - timedelta(hours=5)).strftime('%m/%d/%Y')
+        with self._get_connection() as conn:
+            conn.execute("INSERT INTO tasks (urgency, description, date_assigned, date_completed, assigned_to) VALUES (?, ?, ?, '', '')", 
+                         (urgency, description, est_date))
 
     def assign_task_to_worker(self, row_number, worker_name):
         with self._get_connection() as conn:
